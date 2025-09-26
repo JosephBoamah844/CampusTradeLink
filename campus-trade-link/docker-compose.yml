@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: campus-trade-link-db
+    environment:
+      POSTGRES_DB: campus_trade_link
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis (Optional - for caching)
+  redis:
+    image: redis:7-alpine
+    container_name: campus-trade-link-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: campus-trade-link-api
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/campus_trade_link
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-super-secret-jwt-key-here
+      - JWT_REFRESH_SECRET=your-super-secret-refresh-key-here
+      - SUPABASE_URL=https://your-project.supabase.co
+      - SUPABASE_ANON_KEY=your-supabase-anon-key
+      - SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+      - SMTP_USER=your-email@gmail.com
+      - SMTP_PASS=your-app-password
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Web Frontend
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: campus-trade-link-web
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4000/api
+      - NEXT_PUBLIC_WS_URL=http://localhost:4000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: campus-trade-link-network
